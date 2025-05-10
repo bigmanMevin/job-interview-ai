@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import io
 
-# === Interview Questions ===
 questions = [
     "Tell me about yourself.",
     "Why should we hire you?",
@@ -10,55 +9,67 @@ questions = [
     "Where do you see yourself in 5 years?"
 ]
 
-# === Simple scoring via word overlap ===
-def simple_score(question, answer):
-    q_words = set(question.lower().split())
-    a_words = set(answer.lower().split())
-    return len(q_words & a_words) / max(len(q_words), 1)
-
-# === Ollama Assistant ===
-def get_ollama_suggestion(question):
+def ask_ollama(prompt):
     try:
-        response = requests.post(
+        res = requests.post(
             "http://localhost:11434/api/generate",
             json={
-                "model": "mistral",  # or llama2, phi, gemma, etc.
-                "prompt": f"Suggest a professional job interview answer to: {question}",
+                "model": "mistral",
+                "prompt": prompt,
                 "stream": False
             },
             timeout=15
         )
-        return response.json().get("response", "").strip()
+        return res.json().get("response", "").strip()
     except Exception as e:
         return f"❌ Ollama error: {str(e)}"
 
-# === Streamlit UI ===
-st.title("🧠 Job Interview AI – with Ollama Assistant")
+def simple_score(q, a):
+    return 5 if len(set(q.lower().split()) & set(a.lower().split())) > 2 else 2
 
 if "current_q" not in st.session_state:
     st.session_state.current_q = 0
-    st.session_state.responses = []
-    st.session_state.scores = []
+    st.session_state.responses = ["" for _ in questions]
+    st.session_state.scores = [0 for _ in questions]
+    st.session_state.chat_history = [[] for _ in questions]
+
+st.title("🧠 Job Interview AI (with Ollama Chat Assistant)")
 
 if st.session_state.current_q < len(questions):
-    q = questions[st.session_state.current_q]
-    st.subheader(f"🎤 Question {st.session_state.current_q + 1}: {q}")
+    q_index = st.session_state.current_q
+    q = questions[q_index]
 
-    with st.spinner("🤖 Generating AI Assistant Suggestion..."):
-        suggestion = get_ollama_suggestion(q)
-    st.markdown("💡 **AI Assistant Suggestion:**")
-    st.info(suggestion)
+    st.subheader(f"🎤 Question {q_index + 1}: {q}")
 
-    answer = st.text_area("📝 Your Answer", height=150)
+    with st.expander("🤖 Need help answering? Ask the AI Assistant:"):
+        user_prompt = st.text_input("Ask your assistant:", key=f"chat_{q_index}")
+        if st.button("Ask", key=f"ask_{q_index}"):
+            full_prompt = f"You are an interview coach. A candidate is being asked: '{q}'.\n\nThey ask: '{user_prompt}'\n\nGive a helpful, specific response."
+            reply = ask_ollama(full_prompt)
+            st.session_state.chat_history[q_index].append((user_prompt, reply))
 
-    if st.button("✅ Submit Answer"):
-        if not answer.strip():
-            st.warning("Please enter your answer.")
-        else:
-            score = 5 if simple_score(q, answer) > 0.3 else 2
-            st.session_state.responses.append(answer)
-            st.session_state.scores.append(score)
-            st.session_state.current_q += 1
+        for u, r in st.session_state.chat_history[q_index][-3:]:
+            st.markdown(f"**🧑 You:** {u}")
+            st.markdown(f"**🤖 AI:** {r}")
+
+    st.text_area("📝 Your Final Answer", value=st.session_state.responses[q_index], key="answer")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("⬅️ Previous") and st.session_state.current_q > 0:
+            st.session_state.responses[q_index] = st.session_state["answer"]
+            st.session_state.current_q -= 1
+
+    with col2:
+        if st.button("✅ Submit Answer"):
+            if not st.session_state["answer"].strip():
+                st.warning("Please write your answer.")
+            else:
+                st.session_state.responses[q_index] = st.session_state["answer"]
+                st.session_state.scores[q_index] = simple_score(q, st.session_state["answer"])
+                if st.session_state.current_q + 1 < len(questions):
+                    st.session_state.current_q += 1
 
 if st.session_state.current_q >= len(questions):
     st.header("✅ Interview Complete")
@@ -66,7 +77,6 @@ if st.session_state.current_q >= len(questions):
     max_score = len(questions) * 5
     st.success(f"Your Total Score: {total} / {max_score}")
 
-    # Generate report
     report = io.StringIO()
     report.write("Job Interview Report\n\n")
     for i, (q, a, s) in enumerate(zip(questions, st.session_state.responses, st.session_state.scores)):
@@ -76,5 +86,4 @@ if st.session_state.current_q >= len(questions):
     report.write(f"Final Score: {total} / {max_score}\n")
 
     st.download_button("📄 Download Report (.txt)", report.getvalue(), file_name="interview_report.txt")
-
     st.balloons()
