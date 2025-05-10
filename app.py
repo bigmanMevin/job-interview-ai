@@ -5,7 +5,6 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 import numpy as np
 import tempfile
 from collections import Counter
-import openai
 from google.cloud import speech
 import wave
 import json
@@ -21,7 +20,6 @@ if not os.path.exists("gcp-key.json"):
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcp-key.json"
 
 # === CONFIG ===
-openai.api_key = os.getenv("OPENAI_API_KEY")
 questions = [
     "Tell me about yourself.",
     "Why should we hire you?",
@@ -85,18 +83,7 @@ if st.session_state.current_q < len(questions):
             st.write("📸 Facial Emotion Detection: [Skipped - Not supported in Streamlit Cloud]")
 
             st.write("🤖 Interviewer Bot Follow-Up:")
-            try:
-                completion = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You're a professional interviewer."},
-                        {"role": "user", "content": f"This was the candidate's response: {text}. Suggest one insightful follow-up question."}
-                    ]
-                )
-                follow_up = completion['choices'][0]['message']['content']
-            except Exception:
-                follow_up = "Could not generate follow-up."
-            st.write(f"💬 **Bot:** {follow_up}")
+            st.write("💬 **Bot:** Try expanding on your previous point in a real interview.")
 
             st.session_state.responses.append(text)
             st.session_state.scores.append(score)
@@ -141,4 +128,3 @@ if st.session_state.current_q >= len(questions):
             st.download_button("⬇️ Download Report", f, file_name="Interview_Report.pdf")
 
     st.balloons()
-
