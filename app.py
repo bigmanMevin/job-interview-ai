@@ -1,6 +1,4 @@
 import streamlit as st
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import tempfile
@@ -14,26 +12,25 @@ questions = [
     "Where do you see yourself in 5 years?"
 ]
 
-# === Relevance Scoring ===
-def get_relevance_score(question, answer):
-    vectorizer = TfidfVectorizer().fit_transform([question, answer])
-    vectors = vectorizer.toarray()
-    return cosine_similarity([vectors[0]], [vectors[1]])[0][0]
+# === Simple Scoring via Word Overlap ===
+def simple_relevance_score(question, answer):
+    q_words = set(question.lower().split())
+    a_words = set(answer.lower().split())
+    common = q_words.intersection(a_words)
+    return len(common) / len(q_words) if q_words else 0
 
 # === Streamlit UI ===
-st.title("🧠 Job Interview AI – Streamlit Edition")
-st.markdown("Upload a `.txt` file of your answer or type your response below.")
+st.title("🧠 Job Interview AI – Minimal Version")
+st.markdown("Type or upload your response to each interview question.")
 
 if "current_q" not in st.session_state:
     st.session_state.current_q = 0
     st.session_state.responses = []
     st.session_state.scores = []
-    st.session_state.emotions = []
 
 st.subheader(f"🎤 Question {st.session_state.current_q + 1}:")
 st.markdown(f"**{questions[st.session_state.current_q]}**")
 
-# Upload or manual input
 uploaded_txt = st.file_uploader("📄 Upload answer (.txt)", type=["txt"])
 response_text = ""
 if uploaded_txt:
@@ -45,26 +42,20 @@ if st.button("✅ Submit Answer"):
     if not response_text.strip():
         st.warning("Please enter or upload your answer.")
     else:
-        score = 0
-        relevance = get_relevance_score(questions[st.session_state.current_q], response_text)
-        st.write(f"📊 Relevance Score: `{relevance:.2f}`")
+        relevance = simple_relevance_score(questions[st.session_state.current_q], response_text)
+        score = 5 if relevance > 0.3 else 2
 
-        if relevance > 0.3:
-            score += 5
-        emotion = "Not Analyzed"
+        st.write(f"📊 Approximate Relevance Score: `{relevance:.2f}`")
+        st.write("🤖 Try expanding on this in your next attempt.")
 
-        st.write("🤖 Follow-Up: Try expanding on your previous point in a real interview.")
-
-        # Save session state
         st.session_state.responses.append(response_text)
         st.session_state.scores.append(score)
-        st.session_state.emotions.append(emotion)
         st.session_state.current_q += 1
 
 if st.session_state.current_q >= len(questions):
     st.header("🎯 Interview Completed")
     total_score = sum(st.session_state.scores)
-    st.success(f"Your Total Score: {total_score} / {len(questions) * 8}")
+    st.success(f"Your Total Score: {total_score} / {len(questions) * 5}")
 
     if st.button("📄 Download PDF Report"):
         pdf_path = "interview_report.pdf"
@@ -75,15 +66,13 @@ if st.session_state.current_q >= len(questions):
 
         y = height - 80
         c.setFont("Helvetica", 11)
-        for i, (q, r, s, e) in enumerate(zip(questions, st.session_state.responses, st.session_state.scores, st.session_state.emotions)):
+        for i, (q, r, s) in enumerate(zip(questions, st.session_state.responses, st.session_state.scores)):
             c.drawString(50, y, f"Q{i+1}: {q}")
             y -= 15
             for line in r.splitlines():
                 c.drawString(60, y, f"Answer: {line}")
                 y -= 15
-            c.drawString(60, y, f"Score: {s} / 8")
-            y -= 15
-            c.drawString(60, y, f"Emotion: {e}")
+            c.drawString(60, y, f"Score: {s} / 5")
             y -= 25
 
             if y < 100:
@@ -91,11 +80,10 @@ if st.session_state.current_q >= len(questions):
                 y = height - 50
                 c.setFont("Helvetica", 11)
 
-        c.drawString(50, y, f"Final Score: {total_score} / {len(questions) * 8}")
+        c.drawString(50, y, f"Final Score: {total_score} / {len(questions) * 5}")
         c.save()
 
         with open(pdf_path, "rb") as f:
             st.download_button("⬇️ Download Report", f, file_name="Interview_Report.pdf")
 
     st.balloons()
-
