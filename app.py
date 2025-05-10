@@ -2,7 +2,9 @@ import streamlit as st
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force DeepFace to use CPU only
 
-import whisper
+from vosk import Model, KaldiRecognizer
+import wave
+import soundfile as sf
 import sounddevice as sd
 import numpy as np
 import scipy.io.wavfile
@@ -13,10 +15,10 @@ from deepface import DeepFace
 from collections import Counter
 from fpdf import FPDF
 import openai
+import json
 
 # === CONFIG ===
 openai.api_key = os.getenv("OPENAI_API_KEY")  # Get key from Streamlit Secrets or env vars
-whisper_model = whisper.load_model("base", device="cpu")  # CPU mode for Streamlit
 qa_model = pipeline("question-answering")
 questions = [
     "Tell me about yourself.",
@@ -24,6 +26,21 @@ questions = [
     "What are your strengths?",
     "Where do you see yourself in 5 years?"
 ]
+
+# === Transcription using Vosk ===
+def transcribe_with_vosk(audio_path):
+    wf = wave.open(audio_path, "rb")
+    model = Model(lang="en-us")
+    rec = KaldiRecognizer(model, wf.getframerate())
+    results = []
+    while True:
+        data = wf.readframes(4000)
+        if len(data) == 0:
+            break
+        if rec.AcceptWaveform(data):
+            results.append(json.loads(rec.Result())['text'])
+    results.append(json.loads(rec.FinalResult())['text'])
+    return " ".join(results)
 
 # === Streamlit UI ===
 st.title("🧠 Job Interview AI – Multimodal NLP System")
@@ -56,8 +73,7 @@ if st.session_state.current_q < len(questions):
             st.success("Recording complete.")
             st.audio(path)
 
-            result = whisper_model.transcribe(path)
-            text = result['text']
+            text = transcribe_with_vosk(path)
             st.write("📝 **Transcribed Text:**", text)
 
             relevance = qa_model(question=questions[st.session_state.current_q], context=text)
