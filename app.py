@@ -5,13 +5,14 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 import numpy as np
 import tempfile
 from collections import Counter
-from fpdf import FPDF
 import openai
 from google.cloud import speech
 import wave
 import json
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 # === GOOGLE CLOUD SETUP ===
 if not os.path.exists("gcp-key.json"):
@@ -80,7 +81,6 @@ if st.session_state.current_q < len(questions):
             if relevance_score > 0.3:
                 score += 5
 
-            # Removed DeepFace: emotion analysis disabled
             emotion = "Not Analyzed"
             st.write("📸 Facial Emotion Detection: [Skipped - Not supported in Streamlit Cloud]")
 
@@ -110,24 +110,35 @@ if st.session_state.current_q >= len(questions):
     st.success(f"Your Total Score: {total_score} / {len(questions) * 8}")
 
     if st.button("📄 Download PDF Report"):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(200, 10, "Job Interview AI - Report", ln=True, align='C')
-
-        for i, (q, r, s, e) in enumerate(zip(questions, st.session_state.responses, st.session_state.scores, st.session_state.emotions)):
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(200, 10, f"\nQuestion {i+1}: {q}", ln=True)
-            pdf.set_font("Arial", "", 11)
-            pdf.multi_cell(0, 10, f"Response: {r}")
-            pdf.cell(200, 10, f"Score: {s} / 8", ln=True)
-            pdf.cell(200, 10, f"Emotion: {e}", ln=True)
-
-        pdf.cell(200, 10, f"\nFinal Score: {total_score} / {len(questions) * 8}", ln=True)
-
         pdf_path = "interview_report.pdf"
-        pdf.output(pdf_path)
+        c = canvas.Canvas(pdf_path, pagesize=letter)
+        width, height = letter
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(width / 2, height - 50, "Job Interview AI - Report")
+
+        y = height - 80
+        c.setFont("Helvetica", 11)
+        for i, (q, r, s, e) in enumerate(zip(questions, st.session_state.responses, st.session_state.scores, st.session_state.emotions)):
+            c.drawString(50, y, f"Q{i+1}: {q}")
+            y -= 15
+            for line in r.splitlines():
+                c.drawString(60, y, f"Answer: {line}")
+                y -= 15
+            c.drawString(60, y, f"Score: {s} / 8")
+            y -= 15
+            c.drawString(60, y, f"Emotion: {e}")
+            y -= 25
+
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                c.setFont("Helvetica", 11)
+
+        c.drawString(50, y, f"Final Score: {total_score} / {len(questions) * 8}")
+        c.save()
+
         with open(pdf_path, "rb") as f:
             st.download_button("⬇️ Download Report", f, file_name="Interview_Report.pdf")
 
     st.balloons()
+
