@@ -2,9 +2,7 @@ import streamlit as st
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force DeepFace to use CPU only
 
-import sounddevice as sd
 import numpy as np
-import scipy.io.wavfile
 import tempfile
 import librosa
 from transformers import pipeline
@@ -48,7 +46,7 @@ def transcribe_google(audio_path):
 
 # === Streamlit UI ===
 st.title("🧠 Job Interview AI – Multimodal NLP System")
-st.markdown("This AI will simulate an interview, record your answers, analyze them, and give feedback with scores and a final report.")
+st.markdown("Upload your response as a .wav file to simulate a real interview experience.")
 
 if "current_q" not in st.session_state:
     st.session_state.current_q = 0
@@ -56,25 +54,16 @@ if "current_q" not in st.session_state:
     st.session_state.scores = []
     st.session_state.emotions = []
 
-duration = st.slider("Recording Duration (seconds)", 5, 60, 10)
-record_btn = st.button("🎙️ Record Answer Now")
+uploaded_file = st.file_uploader("📤 Upload your .wav response", type=["wav"])
 
 if st.session_state.current_q < len(questions):
     st.subheader(f"🎤 Question {st.session_state.current_q + 1}:")
     st.markdown(f"**{questions[st.session_state.current_q]}**")
 
-    def record_audio(filename, duration):
-        fs = 44100
-        st.info("Recording...")
-        audio = sd.rec(int(duration * fs), samplerate=fs, channels=1)
-        sd.wait()
-        scipy.io.wavfile.write(filename, fs, audio)
-        return filename
-
-    if record_btn:
+    if uploaded_file is not None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
-            path = record_audio(tmp_audio.name, duration)
-            st.success("Recording complete.")
+            tmp_audio.write(uploaded_file.read())
+            path = tmp_audio.name
             st.audio(path)
 
             text = transcribe_google(path)
