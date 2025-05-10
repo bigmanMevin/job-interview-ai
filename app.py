@@ -1,10 +1,9 @@
 import streamlit as st
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force DeepFace to use CPU only
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 import numpy as np
 import tempfile
-from deepface import DeepFace
 from collections import Counter
 from fpdf import FPDF
 import openai
@@ -81,20 +80,9 @@ if st.session_state.current_q < len(questions):
             if relevance_score > 0.3:
                 score += 5
 
-            st.write("📸 Capture your facial expression:")
-            image = st.camera_input("Take a snapshot")
-            emotion = "Unknown"
-            if image:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as img_tmp:
-                    img_tmp.write(image.getbuffer())
-                    try:
-                        analysis = DeepFace.analyze(img_tmp.name, actions=['emotion'], enforce_detection=False)
-                        emotion = analysis[0]['dominant_emotion']
-                        if emotion == 'happy':
-                            score += 2
-                    except:
-                        pass
-            st.write("Detected Emotion:", emotion)
+            # Removed DeepFace: emotion analysis disabled
+            emotion = "Not Analyzed"
+            st.write("📸 Facial Emotion Detection: [Skipped - Not supported in Streamlit Cloud]")
 
             st.write("🤖 Interviewer Bot Follow-Up:")
             try:
