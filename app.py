@@ -2,9 +2,6 @@ import streamlit as st
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force DeepFace to use CPU only
 
-from vosk import Model, KaldiRecognizer
-import wave
-import soundfile as sf
 import sounddevice as sd
 import numpy as np
 import scipy.io.wavfile
@@ -15,10 +12,18 @@ from deepface import DeepFace
 from collections import Counter
 from fpdf import FPDF
 import openai
+from google.cloud import speech
+import wave
 import json
 
+# === GOOGLE CLOUD SETUP ===
+if not os.path.exists("gcp-key.json"):
+    with open("gcp-key.json", "w") as f:
+        f.write(st.secrets["GCP_CREDENTIALS"])
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcp-key.json"
+
 # === CONFIG ===
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Get key from Streamlit Secrets or env vars
+openai.api_key = os.getenv("OPENAI_API_KEY")
 qa_model = pipeline("question-answering")
 questions = [
     "Tell me about yourself.",
@@ -27,20 +32,19 @@ questions = [
     "Where do you see yourself in 5 years?"
 ]
 
-# === Transcription using Vosk ===
-def transcribe_with_vosk(audio_path):
-    wf = wave.open(audio_path, "rb")
-    model = Model(lang="en-us")
-    rec = KaldiRecognizer(model, wf.getframerate())
-    results = []
-    while True:
-        data = wf.readframes(4000)
-        if len(data) == 0:
-            break
-        if rec.AcceptWaveform(data):
-            results.append(json.loads(rec.Result())['text'])
-    results.append(json.loads(rec.FinalResult())['text'])
-    return " ".join(results)
+# === Transcription using Google Cloud ===
+def transcribe_google(audio_path):
+    client = speech.SpeechClient()
+    with open(audio_path, "rb") as f:
+        content = f.read()
+    audio = speech.RecognitionAudio(content=content)
+    config = speech.RecognitionConfig(
+        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=44100,
+        language_code="en-US",
+    )
+    response = client.recognize(config=config, audio=audio)
+    return " ".join([r.alternatives[0].transcript for r in response.results])
 
 # === Streamlit UI ===
 st.title("🧠 Job Interview AI – Multimodal NLP System")
@@ -73,7 +77,7 @@ if st.session_state.current_q < len(questions):
             st.success("Recording complete.")
             st.audio(path)
 
-            text = transcribe_with_vosk(path)
+            text = transcribe_google(path)
             st.write("📝 **Transcribed Text:**", text)
 
             relevance = qa_model(question=questions[st.session_state.current_q], context=text)
