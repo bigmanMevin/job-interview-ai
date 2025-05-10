@@ -4,7 +4,6 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force DeepFace to use CPU only
 
 import numpy as np
 import tempfile
-import librosa
 from transformers import pipeline
 from deepface import DeepFace
 from collections import Counter
@@ -72,15 +71,9 @@ if st.session_state.current_q < len(questions):
             relevance = qa_model(question=questions[st.session_state.current_q], context=text)
             st.write("📊 Relevance Score:", f"{relevance['score']:.2f}")
 
-            y, sr = librosa.load(path, sr=None)
-            pitch = librosa.yin(y, fmin=75, fmax=300, sr=sr)
-            tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-            avg_pitch = np.mean(pitch)
-            st.write("🎼 Avg Pitch:", f"{avg_pitch:.2f} Hz | Tempo: {tempo:.2f} BPM")
-
             score = 0
-            if relevance['score'] > 0.5: score += 5
-            if avg_pitch > 150: score += 1
+            if relevance['score'] > 0.5:
+                score += 5
 
             st.write("📸 Capture your facial expression:")
             image = st.camera_input("Take a snapshot")
@@ -91,7 +84,8 @@ if st.session_state.current_q < len(questions):
                     try:
                         analysis = DeepFace.analyze(img_tmp.name, actions=['emotion'], enforce_detection=False)
                         emotion = analysis[0]['dominant_emotion']
-                        if emotion == 'happy': score += 2
+                        if emotion == 'happy':
+                            score += 2
                     except:
                         pass
             st.write("Detected Emotion:", emotion)
