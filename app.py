@@ -4,7 +4,6 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force DeepFace to use CPU only
 
 import numpy as np
 import tempfile
-from transformers import pipeline
 from deepface import DeepFace
 from collections import Counter
 from fpdf import FPDF
@@ -12,6 +11,8 @@ import openai
 from google.cloud import speech
 import wave
 import json
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # === GOOGLE CLOUD SETUP ===
 if not os.path.exists("gcp-key.json"):
@@ -21,7 +22,6 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcp-key.json"
 
 # === CONFIG ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
-qa_model = pipeline("question-answering")
 questions = [
     "Tell me about yourself.",
     "Why should we hire you?",
@@ -42,6 +42,12 @@ def transcribe_google(audio_path):
     )
     response = client.recognize(config=config, audio=audio)
     return " ".join([r.alternatives[0].transcript for r in response.results])
+
+# === Simple Relevance Scoring ===
+def get_relevance_score(question, answer):
+    vectorizer = TfidfVectorizer().fit_transform([question, answer])
+    vectors = vectorizer.toarray()
+    return cosine_similarity([vectors[0]], [vectors[1]])[0][0]
 
 # === Streamlit UI ===
 st.title("🧠 Job Interview AI – Multimodal NLP System")
@@ -68,11 +74,11 @@ if st.session_state.current_q < len(questions):
             text = transcribe_google(path)
             st.write("📝 **Transcribed Text:**", text)
 
-            relevance = qa_model(question=questions[st.session_state.current_q], context=text)
-            st.write("📊 Relevance Score:", f"{relevance['score']:.2f}")
+            relevance_score = get_relevance_score(questions[st.session_state.current_q], text)
+            st.write("📊 Relevance Score:", f"{relevance_score:.2f}")
 
             score = 0
-            if relevance['score'] > 0.5:
+            if relevance_score > 0.3:
                 score += 5
 
             st.write("📸 Capture your facial expression:")
