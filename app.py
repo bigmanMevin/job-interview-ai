@@ -1,23 +1,10 @@
 import streamlit as st
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-
-import numpy as np
-import tempfile
-from collections import Counter
-from google.cloud import speech
-import wave
-import json
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-
-# === GOOGLE CLOUD SETUP ===
-if not os.path.exists("gcp-key.json"):
-    with open("gcp-key.json", "w") as f:
-        f.write(st.secrets["GCP_CREDENTIALS"])
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcp-key.json"
+import tempfile
+import os
 
 # === CONFIG ===
 questions = [
@@ -27,29 +14,15 @@ questions = [
     "Where do you see yourself in 5 years?"
 ]
 
-# === Transcription using Google Cloud ===
-def transcribe_google(audio_path):
-    client = speech.SpeechClient()
-    with open(audio_path, "rb") as f:
-        content = f.read()
-    audio = speech.RecognitionAudio(content=content)
-    config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        sample_rate_hertz=44100,
-        language_code="en-US",
-    )
-    response = client.recognize(config=config, audio=audio)
-    return " ".join([r.alternatives[0].transcript for r in response.results])
-
-# === Simple Relevance Scoring ===
+# === Relevance Scoring ===
 def get_relevance_score(question, answer):
     vectorizer = TfidfVectorizer().fit_transform([question, answer])
     vectors = vectorizer.toarray()
     return cosine_similarity([vectors[0]], [vectors[1]])[0][0]
 
 # === Streamlit UI ===
-st.title("🧠 Job Interview AI – Multimodal NLP System")
-st.markdown("Upload your response as a .wav file to simulate a real interview experience.")
+st.title("🧠 Job Interview AI – Streamlit Edition")
+st.markdown("Upload a `.txt` file of your answer or type your response below.")
 
 if "current_q" not in st.session_state:
     st.session_state.current_q = 0
@@ -57,39 +30,36 @@ if "current_q" not in st.session_state:
     st.session_state.scores = []
     st.session_state.emotions = []
 
-uploaded_file = st.file_uploader("📤 Upload your .wav response", type=["wav"])
+st.subheader(f"🎤 Question {st.session_state.current_q + 1}:")
+st.markdown(f"**{questions[st.session_state.current_q]}**")
 
-if st.session_state.current_q < len(questions):
-    st.subheader(f"🎤 Question {st.session_state.current_q + 1}:")
-    st.markdown(f"**{questions[st.session_state.current_q]}**")
+# Upload or manual input
+uploaded_txt = st.file_uploader("📄 Upload answer (.txt)", type=["txt"])
+response_text = ""
+if uploaded_txt:
+    response_text = uploaded_txt.read().decode("utf-8")
+else:
+    response_text = st.text_area("📝 Or type your answer here:")
 
-    if uploaded_file is not None:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
-            tmp_audio.write(uploaded_file.read())
-            path = tmp_audio.name
-            st.audio(path)
+if st.button("✅ Submit Answer"):
+    if not response_text.strip():
+        st.warning("Please enter or upload your answer.")
+    else:
+        score = 0
+        relevance = get_relevance_score(questions[st.session_state.current_q], response_text)
+        st.write(f"📊 Relevance Score: `{relevance:.2f}`")
 
-            text = transcribe_google(path)
-            st.write("📝 **Transcribed Text:**", text)
+        if relevance > 0.3:
+            score += 5
+        emotion = "Not Analyzed"
 
-            relevance_score = get_relevance_score(questions[st.session_state.current_q], text)
-            st.write("📊 Relevance Score:", f"{relevance_score:.2f}")
+        st.write("🤖 Follow-Up: Try expanding on your previous point in a real interview.")
 
-            score = 0
-            if relevance_score > 0.3:
-                score += 5
-
-            emotion = "Not Analyzed"
-            st.write("📸 Facial Emotion Detection: [Skipped - Not supported in Streamlit Cloud]")
-
-            st.write("🤖 Interviewer Bot Follow-Up:")
-            st.write("💬 **Bot:** Try expanding on your previous point in a real interview.")
-
-            st.session_state.responses.append(text)
-            st.session_state.scores.append(score)
-            st.session_state.emotions.append(emotion)
-
-            st.session_state.current_q += 1
+        # Save session state
+        st.session_state.responses.append(response_text)
+        st.session_state.scores.append(score)
+        st.session_state.emotions.append(emotion)
+        st.session_state.current_q += 1
 
 if st.session_state.current_q >= len(questions):
     st.header("🎯 Interview Completed")
@@ -128,3 +98,4 @@ if st.session_state.current_q >= len(questions):
             st.download_button("⬇️ Download Report", f, file_name="Interview_Report.pdf")
 
     st.balloons()
+
